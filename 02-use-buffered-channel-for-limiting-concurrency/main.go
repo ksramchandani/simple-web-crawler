@@ -8,7 +8,8 @@ import (
 
 var (
 	wg              = sync.WaitGroup{}
-	totalGoRoutines = make(chan bool, 5)
+	totalGoRoutines = 5
+	buffered        = make(chan bool, totalGoRoutines)
 )
 
 type Job struct {
@@ -17,13 +18,23 @@ type Job struct {
 }
 
 func crawl(c Crawler, current Job) {
-
 	defer wg.Done()
 
-	totalGoRoutines <- true
+	// This is the only change from the previous method
+	// We limit the number of go routines by adding a buffered channel
+	// that will only allow sending upto totalGoRoutines messages on the channel
+	// The reason to do the wg.Add(1) by the url is because it is almost impossible
+	// to use a worker pool with channels for this scenario
+	// If we used a worker pool, a worker will receive a url from a channel
+	// Now, after crawling, more urls needs to be crawled
+	// Sending on the same channel will deadlock it even with buffering
+	// Sending it on a different channel causes additional complexity of now receiving
+	// it from the other channel and co-ordinating when the code terminates
+
+	buffered <- true
 	defer func() {
 		time.Sleep(2 * time.Second)
-		<-totalGoRoutines
+		<-buffered
 	}()
 
 	if current.depth <= 0 {
